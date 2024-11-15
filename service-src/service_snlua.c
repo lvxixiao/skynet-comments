@@ -335,18 +335,30 @@ init_profile(lua_State *L) {
 		{ "wrap", luaB_cowrap },
 		{ NULL, NULL },
 	};
-	luaL_newlibtable(L,l);
-	lua_newtable(L);	// table thread->start time
-	lua_newtable(L);	// table thread->total time
+	//创建一个table, 创建时根据 l 初始化 hash 部分大小, 需要配合 luaL_setfuncs 使用
+	luaL_newlibtable(L,l); // stack 1
+	lua_newtable(L);	// table thread->start time // stack 2
+	lua_newtable(L);	// table thread->total time // stack 3
 
-	lua_newtable(L);	// weak table
+	lua_newtable(L);	// weak table // stack 4
 	lua_pushliteral(L, "kv");
 	lua_setfield(L, -2, "__mode");
 
-	lua_pushvalue(L, -1);
+	//将栈顶复制一份
+	lua_pushvalue(L, -1); // stack 5
+	//为 thread->total 设置元表, lua_setmetatable 会将元表从栈顶弹出
 	lua_setmetatable(L, -3);
+	//为 thread->start 设置元表
 	lua_setmetatable(L, -3);
 
+	/**
+	 * 此时的栈
+	 * 1. table 
+	 * 2. thread->start
+	 * 3. thread->total
+	 * 
+	 * luaL_setfuncs 将 l 设置到 table 中, 并且 thread->start, thread->total 作为upvalue, 之后将upvalue弹出
+	*/
 	luaL_setfuncs(L,l,2);
 
 	return 1;
@@ -386,8 +398,10 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 	l->ctx = ctx;
 	lua_gc(L, LUA_GCSTOP, 0);
 	lua_pushboolean(L, 1);  /* signal for libraries to ignore env. vars. */
+	//往注册表里设置 LUA_NOENV = true, 让接下来打开的库忽略 env
 	lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
 	luaL_openlibs(L);
+	//加载 skynet.profile 模块
 	luaL_requiref(L, "skynet.profile", init_profile, 0);
 
 	int profile_lib = lua_gettop(L);
@@ -400,13 +414,15 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 
 	lua_settop(L, profile_lib-1);
 
+	//注册表里设置 skynet_context = ctx
 	lua_pushlightuserdata(L, ctx);
 	lua_setfield(L, LUA_REGISTRYINDEX, "skynet_context");
+	//加载 codecache 模块
 	luaL_requiref(L, "skynet.codecache", codecache , 0);
 	lua_pop(L,1);
-
+	// 使用分代gc
 	lua_gc(L, LUA_GCGEN, 0, 0);
-
+	// 设置环境变量
 	const char *path = optstring(ctx, "lua_path","./lualib/?.lua;./lualib/?/init.lua");
 	lua_pushstring(L, path);
 	lua_setglobal(L, "LUA_PATH");
@@ -425,6 +441,7 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 
 	const char * loader = optstring(ctx, "lualoader", "./lualib/loader.lua");
 
+	//加载loader.lua
 	int r = luaL_loadfile(L,loader);
 	if (r != LUA_OK) {
 		skynet_error(ctx, "Can't load %s : %s", loader, lua_tostring(L, -1));
@@ -432,13 +449,17 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 		return 1;
 	}
 	lua_pushlstring(L, args, sz);
+	printf("service_snlua.c init_cb param:%s\n", lua_tostring(L, -1));
+	//执行loader.lua, 其逻辑是执行创建服务时指定的lua脚本, 错误处理函数是 traceback
 	r = lua_pcall(L,1,0,1);
 	if (r != LUA_OK) {
 		skynet_error(ctx, "lua loader error : %s", lua_tostring(L, -1));
 		report_launcher_error(ctx);
 		return 1;
 	}
+	//清空栈
 	lua_settop(L,0);
+	//设置内存限制
 	if (lua_getfield(L, LUA_REGISTRYINDEX, "memlimit") == LUA_TNUMBER) {
 		size_t limit = lua_tointeger(L, -1);
 		l->mem_limit = limit;
@@ -457,7 +478,9 @@ static int
 launch_cb(struct skynet_context * context, void *ud, int type, int session, uint32_t source , const void * msg, size_t sz) {
 	assert(type == 0 && session == 0);
 	struct snlua *l = ud;
+	//清除回调函数
 	skynet_callback(context, NULL, NULL);
+	//第一条消息是snlua_init时向自己发的, 所以这里 msg, sz 就是创建服务时传递的参数
 	int err = init_cb(l, context, msg, sz);
 	if (err) {
 		skynet_command(context, "EXIT", NULL);
@@ -471,6 +494,7 @@ snlua_init(struct snlua *l, struct skynet_context *ctx, const char * args) {
 	int sz = strlen(args);
 	char * tmp = skynet_malloc(sz);
 	memcpy(tmp, args, sz);
+	//设置回调函数
 	skynet_callback(ctx, l , launch_cb);
 	const char * self = skynet_command(ctx, "REG", NULL);
 	uint32_t handle_id = strtoul(self+1, NULL, 16);

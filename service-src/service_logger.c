@@ -49,6 +49,7 @@ logger_cb(struct skynet_context * context, void *ud, int type, int session, uint
 	struct logger * inst = ud;
 	switch (type) {
 	case PTYPE_SYSTEM:
+		//重新打开文件,关闭原先的fd, 不知道什么情况下会用到这个
 		if (inst->filename) {
 			inst->handle = freopen(inst->filename, "a", inst->handle);
 		}
@@ -62,6 +63,7 @@ logger_cb(struct skynet_context * context, void *ud, int type, int session, uint
 		fprintf(inst->handle, "[:%08x] ", source);
 		fwrite(msg, sz , 1, inst->handle);
 		fprintf(inst->handle, "\n");
+		//为了及时写入文件, 调用 fflush
 		fflush(inst->handle);
 		break;
 	}
@@ -74,6 +76,7 @@ logger_init(struct logger * inst, struct skynet_context *ctx, const char * parm)
 	const char * r = skynet_command(ctx, "STARTTIME", NULL);
 	inst->starttime = strtoul(r, NULL, 10);
 	if (parm) {
+		// 追加模式打开文件
 		inst->handle = fopen(parm,"a");
 		if (inst->handle == NULL) {
 			return 1;

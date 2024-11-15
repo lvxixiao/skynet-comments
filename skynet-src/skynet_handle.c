@@ -22,7 +22,7 @@ struct handle_storage {
 	uint32_t harbor;
 	uint32_t handle_index;
 	int slot_size;
-	struct skynet_context ** slot;
+	struct skynet_context ** slot; // context list
 	
 	int name_cap;
 	int name_count;
@@ -31,6 +31,7 @@ struct handle_storage {
 
 static struct handle_storage *H = NULL;
 
+//为 context 分配 handle
 uint32_t
 skynet_handle_register(struct skynet_context *ctx) {
 	struct handle_storage *s = H;

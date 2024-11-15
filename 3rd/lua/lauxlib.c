@@ -128,7 +128,7 @@ static int lastlevel (lua_State *L) {
   return le - 1;
 }
 
-
+//生成错误堆栈
 LUALIB_API void luaL_traceback (lua_State *L, lua_State *L1,
                                 const char *msg, int level) {
   luaL_Buffer b;

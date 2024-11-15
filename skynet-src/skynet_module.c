@@ -32,6 +32,7 @@ _try_open(struct modules *m, const char * name) {
 	//search path
 	void * dl = NULL;
 	char tmp[sz];
+	printf("_try_open path:%s, name:%s\n", path, name);
 	do
 	{
 		memset(tmp,0,sz);
@@ -99,6 +100,7 @@ open_sym(struct skynet_module *mod) {
 	return mod->init == NULL;
 }
 
+//查找模块, 如果不存在尝试打开动态库加载成模块
 struct skynet_module * 
 skynet_module_query(const char * name) {
 	struct skynet_module * result = _query(name);
@@ -115,7 +117,7 @@ skynet_module_query(const char * name) {
 		if (dl) {
 			M->m[index].name = name;
 			M->m[index].module = dl;
-
+			// 获得四个必要函数的地址 create、init、release、signal
 			if (open_sym(&M->m[index]) == 0) {
 				M->m[index].name = skynet_strdup(name);
 				M->count ++;

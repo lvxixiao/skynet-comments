@@ -55,6 +55,7 @@ skynet_globalmq_push(struct message_queue * queue) {
 	SPIN_UNLOCK(q)
 }
 
+// 弹出一个次级消息队列
 struct message_queue * 
 skynet_globalmq_pop() {
 	struct global_queue *q = Q;

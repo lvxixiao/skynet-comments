@@ -132,9 +132,10 @@ thread_timer(void *p) {
 	for (;;) {
 		skynet_updatetime();
 		skynet_socket_updatetime();
+		//没有服务了就退出
 		CHECK_ABORT
 		wakeup(m,m->count-1);
-		usleep(2500);
+		usleep(2500); //2.5毫秒
 		if (SIG) {
 			signal_hup();
 			SIG = 0;
@@ -162,13 +163,16 @@ thread_worker(void *p) {
 	while (!m->quit) {
 		q = skynet_context_message_dispatch(sm, q, weight);
 		if (q == NULL) {
+			// 获取互斥锁
 			if (pthread_mutex_lock(&m->mutex) == 0) {
 				++ m->sleep;
 				// "spurious wakeup" is harmless,
 				// because skynet_context_message_dispatch() can be call at any time.
+				//如果线程没有退出, 挂起直到调用pthread_cond_signal(&m->cond)
 				if (!m->quit)
 					pthread_cond_wait(&m->cond, &m->mutex);
 				-- m->sleep;
+				//释放锁
 				if (pthread_mutex_unlock(&m->mutex)) {
 					fprintf(stderr, "unlock mutex error");
 					exit(1);
@@ -181,6 +185,7 @@ thread_worker(void *p) {
 
 static void
 start(int thread) {
+	//4种线程, 监控、定时器、socket、工作线程
 	pthread_t pid[thread+3];
 
 	struct monitor *m = skynet_malloc(sizeof(*m));
@@ -224,6 +229,7 @@ start(int thread) {
 	}
 
 	for (i=0;i<thread+3;i++) {
+		//等待线程结束
 		pthread_join(pid[i], NULL); 
 	}
 

@@ -262,6 +262,7 @@ send_message(lua_State *L, int source, int idx_type) {
 		session = luaL_checkinteger(L,idx_type+1);
 	}
 
+	//消息包类型
 	int mtype = lua_type(L,idx_type+2);
 	switch (mtype) {
 	case LUA_TSTRING: {
@@ -315,6 +316,15 @@ send_message(lua_State *L, int source, int idx_type) {
  */
 static int
 lsend(lua_State *L) {
+	/**
+	 * lua栈底
+	 * 1 dest/dest_string 目标地址
+	 * 2 type 消息类型 
+	 * 3 integer session
+	 * 4 pack(...) 打包后的消息
+	 * 5 size 打包后的数据长度
+	 * lua栈顶
+	*/
 	return send_message(L, 0, 2);
 }
 
