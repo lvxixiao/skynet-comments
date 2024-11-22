@@ -56,7 +56,7 @@ _cb(struct skynet_context * context, void * ud, int type, int session, uint32_t 
 	lua_State *L = cb_ctx->L;
 	int trace = 1;
 	int r;
-	lua_pushvalue(L,2);
+	lua_pushvalue(L,2); // 复制一个 lua callback 函数到栈顶, snlua服务对应的是 skynet.dispatch_message 函数
 
 	lua_pushinteger(L, type);
 	lua_pushlightuserdata(L, (void *)msg);
@@ -82,7 +82,7 @@ _cb(struct skynet_context * context, void * ud, int type, int session, uint32_t 
 		break;
 	};
 
-	lua_pop(L,1);
+	lua_pop(L,1); // 从栈上移除新复制的 callback 函数
 
 	return 0;
 }
@@ -103,6 +103,7 @@ clear_last_context(lua_State *L) {
 	lua_pop(L, 1);
 }
 
+// 执行 skynet.start()时通过 skynet.timeout 第一个调用, 之后再重新设置回调函数
 static int
 _cb_pre(struct skynet_context * context, void * ud, int type, int session, uint32_t source, const void * msg, size_t sz) {
 	struct callback_context *cb_ctx = (struct callback_context *)ud;
@@ -128,13 +129,22 @@ lcallback(lua_State *L) {
 	struct callback_context * cb_ctx = (struct callback_context *)lua_newuserdatauv(L, sizeof(*cb_ctx), 2);
 	cb_ctx->L = lua_newthread(L);
 	lua_pushcfunction(cb_ctx->L, traceback);
+	//cb_ctx->L 设置为 cb_ctx 的 uservalue, 应该是为了防止新创建的thread被gc回收, 所以加了一个引用.
 	lua_setiuservalue(L, -2, 1);
 	lua_getfield(L, LUA_REGISTRYINDEX, "callback_context");
+	//设置上一个 callback_context 作为 uservalue 第二个成员
 	lua_setiuservalue(L, -2, 2);
+	// 将 cb_ctx 设置到注册表
 	lua_setfield(L, LUA_REGISTRYINDEX, "callback_context");
+	// 将调用时传入的回调函数 移动到 cb_ctx->L 的栈上
 	lua_xmove(L, cb_ctx->L, 1);
-
+	// 设置回调函数
 	skynet_callback(context, cb_ctx, (forward)?(_forward_pre):(_cb_pre));
+	/**
+	 * 此时 cb_ctx->L 的栈
+	 * 1 c function traceback
+	 * 2 lua function callback
+	*/
 	return 0;
 }
 
@@ -540,7 +550,7 @@ luaopen_skynet_core(lua_State *L) {
 		return luaL_error(L, "Init skynet context first");
 	}
 
-
+	// luaL_Reg l 的函数都有ctx 作为 upvalue
 	luaL_setfuncs(L,l,1);
 
 	luaL_setfuncs(L,l2,0);

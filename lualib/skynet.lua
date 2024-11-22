@@ -432,7 +432,7 @@ end
 
 -- suspend is local function
 function suspend(co, result, command)
-	if not result then
+	if not result then --异常情况
 		local session = session_coroutine_id[co]
 		if session then -- coroutine may fork by others (session is nil)
 			local addr = session_coroutine_address[co]
@@ -962,6 +962,10 @@ end
 
 function skynet.dispatch_message(...)
 	local succ, err = pcall(raw_dispatch_message,...)
+	--[[
+		fork 队列能在这里调用是因为 skynet 服务由消息驱动, 
+		也就是说只有收到消息时, 在消息处理过程中才会使用 skynet.fork
+	]]
 	while true do
 		if fork_queue.h > fork_queue.t then
 			-- queue is empty
