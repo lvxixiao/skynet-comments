@@ -68,7 +68,7 @@ local sleep_session = {}
 
 local watching_session = {}
 local error_queue = {}
-local fork_queue = { h = 1, t = 0 }
+local fork_queue = { h = 1, t = 0 } --fork的协程队列, 会在处理一条消息后取出执行
 
 local auxsend, auxtimeout, auxwait
 do ---- avoid session rewind conflict
@@ -368,8 +368,9 @@ end
 
 local coroutine_pool = setmetatable({}, { __mode = "kv" })
 
+--从协程池获取一个协程, 没有时会创建
 local function co_create(f)
-	local co = tremove(coroutine_pool)
+	local co = tremove(coroutine_pool) --table.remove 默认参数是 #list, 即取最后一个
 	if co == nil then
 		co = coroutine_create(function(...)
 			f(...)
@@ -446,18 +447,22 @@ function suspend(co, result, command)
 		end
 		session_coroutine_address[co] = nil
 		session_coroutine_tracetag[co] = nil
+		--[[
+			设计上协程是一环套一环, 这个协程执行完要调用 suspend(co, result, "SUSPEND") 来唤醒之前挂起的协程,
+			因为这里走了处理错误的分支, 所以要起一个协程调用来达到调用 suspend(co, result, "SUSPEND") 的效果
+		]]
 		skynet.fork(function() end)	-- trigger command "SUSPEND"
-		local tb = traceback(co,tostring(command))
+		local tb = traceback(co,tostring(command))	--生成堆栈
 		coroutine.close(co)
 		error(tb)
 	end
-	if command == "SUSPEND" then
+	if command == "SUSPEND" then	--唤醒一个挂起的协程
 		return dispatch_wakeup()
-	elseif command == "QUIT" then
+	elseif command == "QUIT" then	--服务退出时才会有这个 command
 		coroutine.close(co)
 		-- service exit
 		return
-	elseif command == "USER" then
+	elseif command == "USER" then	--错误情况
 		-- See skynet.coutine for detail
 		error("Call skynet.coroutine.yield out of skynet.coroutine.resume\n" .. traceback(co))
 	elseif command == nil then
@@ -914,7 +919,7 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 		end
 	else
 		local p = proto[prototype]
-		if p == nil then
+		if p == nil then --未定义消息类型的处理函数
 			if prototype == skynet.PTYPE_TRACE then
 				-- trace next request
 				trace_source[source] = c.tostring(msg,sz)
@@ -928,7 +933,7 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 
 		local f = p.dispatch
 		if f then
-			local co = co_create(f)
+			local co = co_create(f) --获得一个协程来执行 dispatch
 			session_coroutine_id[co] = session
 			session_coroutine_address[co] = source
 			local traceflag = p.trace
@@ -948,8 +953,9 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 					skynet.trace()
 				end
 			end
+			--协程执行dispatch函数
 			suspend(co, coroutine_resume(co, session,source, p.unpack(msg,sz)))
-		else
+		else --错误情况, 没有消息分发函数
 			trace_source[source] = nil
 			if session ~= 0 then
 				c.send(source, skynet.PTYPE_ERROR, session, "")

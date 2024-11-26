@@ -15,11 +15,11 @@
 typedef void (*timer_execute_func)(void *ud,void *arg);
 
 #define TIME_NEAR_SHIFT 8
-#define TIME_NEAR (1 << TIME_NEAR_SHIFT)
+#define TIME_NEAR (1 << TIME_NEAR_SHIFT) // 256
 #define TIME_LEVEL_SHIFT 6
-#define TIME_LEVEL (1 << TIME_LEVEL_SHIFT)
-#define TIME_NEAR_MASK (TIME_NEAR-1)
-#define TIME_LEVEL_MASK (TIME_LEVEL-1)
+#define TIME_LEVEL (1 << TIME_LEVEL_SHIFT) //64
+#define TIME_NEAR_MASK (TIME_NEAR-1) //255 二进制 1111 1111
+#define TIME_LEVEL_MASK (TIME_LEVEL-1) //63 二进制 0011 1111
 
 struct timer_event {
 	uint32_t handle;
@@ -69,6 +69,7 @@ add_node(struct timer *T,struct timer_node *node) {
 	uint32_t time=node->expire;
 	uint32_t current_time=T->time;
 	
+	//确认定时器应该放在哪个等级的队列
 	if ((time|TIME_NEAR_MASK)==(current_time|TIME_NEAR_MASK)) {
 		link(&T->near[time&TIME_NEAR_MASK],node);
 	} else {
@@ -108,6 +109,7 @@ move_list(struct timer *T, int level, int idx) {
 	}
 }
 
+//滴答数+1, 并且处理对应槽位上的定时器
 static void
 timer_shift(struct timer *T) {
 	int mask = TIME_NEAR;
@@ -117,7 +119,10 @@ timer_shift(struct timer *T) {
 	} else {
 		uint32_t time = ct >> TIME_NEAR_SHIFT;
 		int i=0;
-
+		/**
+		 * 判断 8-13、14-19、20-25、26-31 位是否有进位, 有则需要移动对应槽位上的定时器
+		 * 当 0-7位全为0时, 则表示发生了进位, 第9位 + 1, 同理可判断其他等级的列表
+		*/
 		while ((ct & (mask-1))==0) {
 			int idx=time & TIME_LEVEL_MASK;
 			if (idx!=0) {
@@ -131,6 +136,7 @@ timer_shift(struct timer *T) {
 	}
 }
 
+//通过 response 消息通知各个服务定时器到期
 static inline void
 dispatch_list(struct timer_node *current) {
 	do {
@@ -149,9 +155,10 @@ dispatch_list(struct timer_node *current) {
 	} while (current);
 }
 
+// 检查到期的定时器, 并通过 response 类型消息通知各个服务
 static inline void
 timer_execute(struct timer *T) {
-	int idx = T->time & TIME_NEAR_MASK;
+	int idx = T->time & TIME_NEAR_MASK;	
 	
 	while (T->near[idx].head.next) {
 		struct timer_node *current = link_clear(&T->near[idx]);
@@ -232,13 +239,14 @@ systime(uint32_t *sec, uint32_t *cs) {
 	*cs = (uint32_t)(ti.tv_nsec / 10000000);
 }
 
+//获得一个以10毫秒为单位的时间戳
 static uint64_t
 gettime() {
 	uint64_t t;
 	struct timespec ti;
 	clock_gettime(CLOCK_MONOTONIC, &ti);
 	t = (uint64_t)ti.tv_sec * 100;
-	t += ti.tv_nsec / 10000000;
+	t += ti.tv_nsec / 10 000 000;
 	return t;
 }
 

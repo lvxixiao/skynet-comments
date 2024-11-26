@@ -698,7 +698,7 @@ skynet_command(struct skynet_context * context, const char * cmd , const char * 
 	return NULL;
 }
 
-//处理参数, 包括将 type 放到 sz 的高8位, 分配session 以及根据参数决定是否负责 data
+//处理参数, 包括将 type 放到 sz 的高8位, 分配session 以及根据参数决定是否复制 data
 static void
 _filter_args(struct skynet_context * context, int type, int *session, void ** data, size_t * sz) {
 	int needcopy = !(type & PTYPE_TAG_DONTCOPY);
@@ -722,7 +722,6 @@ _filter_args(struct skynet_context * context, int type, int *session, void ** da
 
 int
 skynet_send(struct skynet_context * context, uint32_t source, uint32_t destination , int type, int session, void * data, size_t sz) {
-	//todo: zf
 	//消息包长度不包含高8位的type
 	if ((sz & MESSAGE_TYPE_MASK) != sz) {
 		skynet_error(context, "The message to %x is too large", destination);
