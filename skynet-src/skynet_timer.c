@@ -246,7 +246,7 @@ gettime() {
 	struct timespec ti;
 	clock_gettime(CLOCK_MONOTONIC, &ti);
 	t = (uint64_t)ti.tv_sec * 100;
-	t += ti.tv_nsec / 10 000 000;
+	t += ti.tv_nsec / 10000000;
 	return t;
 }
 

@@ -745,11 +745,11 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 
 		return session;
 	}
-	if (skynet_harbor_message_isremote(destination)) {
-		// 发给其他节点 todo: zf
+	if (skynet_harbor_message_isremote(destination)) { // 发给其他节点
 		struct remote_message * rmsg = skynet_malloc(sizeof(*rmsg));
 		rmsg->destination.handle = destination;
 		rmsg->message = data;
+		// sz 的高8位是 type, 低24位才是真实长度
 		rmsg->sz = sz & MESSAGE_TYPE_MASK;
 		rmsg->type = sz >> MESSAGE_TYPE_SHIFT;
 		skynet_harbor_send(rmsg, source, session);
