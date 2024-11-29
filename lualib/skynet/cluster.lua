@@ -2,7 +2,7 @@ local skynet = require "skynet"
 
 local clusterd
 local cluster = {}
-local sender = {}
+local sender = {} --<node, clustersender服务>
 local task_queue = {}
 
 local function repack(address, ...)

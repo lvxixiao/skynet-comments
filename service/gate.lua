@@ -22,6 +22,7 @@ function handler.message(fd, msg, sz)
 	local agent = c.agent
 	if agent then
 		-- It's safe to redirect msg directly , gateserver framework will not free msg.
+		--发给 agent, source 是 c.client
 		skynet.redirect(agent, c.client, "client", fd, msg, sz)
 	else
 		skynet.send(watchdog, "lua", "socket", "data", fd, skynet.tostring(msg, sz))

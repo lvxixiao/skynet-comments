@@ -59,7 +59,8 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 		return
 	else
 		local req = large_request[session]
-		if req then
+		if req then	
+			--比较大的包在收到最后一个包时才是完整数据
 			tracetag = req.tracetag
 			large_request[session] = nil
 			cluster.append(req, msg, sz)
@@ -88,10 +89,12 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 		end
 		sz = nil
 	else
+		--是否为@开头的字符串
 		if cluster.isname(addr) then
 			addr = register_name[addr]
 		end
 		if addr then
+			--消息接收后转发给真正应该接受的服务
 			if is_push then
 				skynet.rawsend(addr, "lua", msg, sz)
 				return	-- no response
@@ -108,8 +111,10 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 			msg = "Invalid name"
 		end
 	end
+	-- 返回数据
 	if ok then
 		response = cluster.packresponse(session, true, msg, sz)
+		--response是个table代表包体过大, 需要分批发送
 		if type(response) == "table" then
 			for _, v in ipairs(response) do
 				socket.lwrite(fd, v)

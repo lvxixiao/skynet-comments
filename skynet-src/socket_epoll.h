@@ -25,6 +25,7 @@ sp_release(int efd) {
 	close(efd);
 }
 
+// 添加 EPOLLIN 事件
 static int 
 sp_add(int efd, int sock, void *ud) {
 	struct epoll_event ev;
@@ -41,6 +42,7 @@ sp_del(int efd, int sock) {
 	epoll_ctl(efd, EPOLL_CTL_DEL, sock , NULL);
 }
 
+//修改 sock 在 epoll 中的监听事件
 static int
 sp_enable(int efd, int sock, void *ud, bool read_enable, bool write_enable) {
 	struct epoll_event ev;
@@ -52,6 +54,7 @@ sp_enable(int efd, int sock, void *ud, bool read_enable, bool write_enable) {
 	return 0;
 }
 
+//等待 epoll 的事件通知, 返回事件数量
 static int 
 sp_wait(int efd, struct event *e, int max) {
 	struct epoll_event ev[max];

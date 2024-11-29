@@ -72,6 +72,7 @@ thread_socket(void *p) {
 			CHECK_ABORT
 			continue;
 		}
+		//唤醒工作线程
 		wakeup(m,0);
 	}
 	return NULL;

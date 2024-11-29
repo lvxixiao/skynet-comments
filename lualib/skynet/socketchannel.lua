@@ -23,6 +23,13 @@ local channel_socket_meta = {
 local socket_error = setmetatable({}, {__tostring = function() return "[Error: socket]" end })	-- alias for error object
 socket_channel.error = socket_error
 
+--[[
+		请求模式有两种
+		1.每个请求包对应一个回应包, 由tcp协议保证时序, 在收到回应包前不会发下一个请求
+		2.发起请求时带一个唯一 session 标识, 带上这个标识, 可以不要求每个请求一定要有回应, 也不需要遵守先请求的先回应
+		sc.channel 提供了两种模式的封装, 调用 channel 时候如果提供 response 则会选择模式2
+		https://github.com/cloudwu/skynet/wiki/SocketChannel
+	]]
 function socket_channel.channel(desc)
 	local c = {
 		__host = assert(desc.host),
@@ -497,6 +504,7 @@ local function sock_err(self)
 	error(socket_error)
 end
 
+--session 模式下 response 是 session
 function channel:request(request, response, padding)
 	assert(block_connect(self, true))	-- connect once
 	local fd = self.__sock[1]

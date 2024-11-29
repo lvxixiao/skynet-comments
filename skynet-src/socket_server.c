@@ -87,10 +87,10 @@ struct socket_stat {
 };
 
 struct socket {
-	uintptr_t opaque;
-	struct wb_list high;
-	struct wb_list low;
-	int64_t wb_size;
+	uintptr_t opaque;		// 绑定的服务地址
+	struct wb_list high;	//高优先级队列
+	struct wb_list low;		//低优先级队列
+	int64_t wb_size;		//未发送的总字节
 	struct socket_stat stat;
 	ATOM_ULONG sending;
 	int fd;
@@ -115,19 +115,19 @@ struct socket {
 struct socket_server {
 	volatile uint64_t time;
 	int reserve_fd;	// for EMFILE
-	int recvctrl_fd;
-	int sendctrl_fd;
-	int checkctrl;
-	poll_fd event_fd;
-	ATOM_INT alloc_id;
-	int event_n;
-	int event_index;
+	int recvctrl_fd;	//pipe的接收 fd
+	int sendctrl_fd;	//pipe的发送 fd
+	int checkctrl;	//是否需要检查 worker 线程有没有通过管道发送数据
+	poll_fd event_fd;	//epoll的 fd
+	ATOM_INT alloc_id;	//已经分配的 id, 用于计算 struct socket 在 slot 中的位置
+	int event_n;	// epoll io 事件的数量
+	int event_index;	// ev 的 index 指针, 指向最后一个已处理的 fd 事件
 	struct socket_object_interface soi;
-	struct event ev[MAX_EVENT];
+	struct event ev[MAX_EVENT];	// epoll 用来存放有 io 事件的 fd 数组
 	struct socket slot[MAX_SOCKET];
 	char buffer[MAX_INFO];
 	uint8_t udpbuffer[MAX_UDP_PACKAGE];
-	fd_set rfds;
+	fd_set rfds;	//select 函数需要的数据结构, 用于 pipe 的读取
 };
 
 struct request_open {
@@ -352,10 +352,12 @@ socket_keepalive(int fd) {
 	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepalive , sizeof(keepalive));  
 }
 
+// 在 ss->slot 中找到一个空位, 设置为保留, 返回其 id
 static int
 reserve_id(struct socket_server *ss) {
 	int i;
 	for (i=0;i<MAX_SOCKET;i++) {
+		// +1 是因为 ATOM_FINC 返回的是之前的值
 		int id = ATOM_FINC(&(ss->alloc_id))+1;
 		if (id < 0) {
 			id = ATOM_FAND(&(ss->alloc_id), 0x7fffffff) & 0x7fffffff;
@@ -363,6 +365,7 @@ reserve_id(struct socket_server *ss) {
 		struct socket *s = &ss->slot[HASH_ID(id)];
 		int type_invalid = ATOM_LOAD(&s->type);
 		if (type_invalid == SOCKET_TYPE_INVALID) {
+			// cas 无锁操作, &s->type == type_invalid 时将 &s->type 设置为 SOCKET_TYPE_RESERVE
 			if (ATOM_CAS(&s->type, type_invalid, SOCKET_TYPE_RESERVE)) {
 				s->id = id;
 				s->protocol = PROTOCOL_UNKNOWN;
@@ -386,20 +389,24 @@ clear_wb_list(struct wb_list *list) {
 	list->tail = NULL;
 }
 
+//初始化 epoll、pipe、socket_server结构
 struct socket_server * 
 socket_server_create(uint64_t time) {
 	int i;
 	int fd[2];
+	//创建 epoll
 	poll_fd efd = sp_create();
 	if (sp_invalid(efd)) {
 		skynet_error(NULL, "socket-server: create event pool failed.");
 		return NULL;
 	}
+	//创建管道 fd[0] 用于读取 fd[1] 用于写入
 	if (pipe(fd)) {
 		sp_release(efd);
 		skynet_error(NULL, "socket-server: create socket pair failed.");
 		return NULL;
 	}
+	//pipe 读一端的 fd 监听 EPOLLIN 事件
 	if (sp_add(efd, fd[0], NULL)) {
 		// add recvctrl_fd to event poll
 		skynet_error(NULL, "socket-server: can't add server fd to event pool.");
@@ -415,6 +422,7 @@ socket_server_create(uint64_t time) {
 	ss->recvctrl_fd = fd[0];
 	ss->sendctrl_fd = fd[1];
 	ss->checkctrl = 1;
+	// fd = 1是标准输出, 复制一个文件描述符指向同一个文件, 是为了预留一个文件描述符, 为了遇到文件描述符打开过多时可以紧急使用
 	ss->reserve_fd = dup(1);	// reserve an extra fd for EMFILE
 
 	for (i=0;i<MAX_SOCKET;i++) {
@@ -565,11 +573,12 @@ enable_read(struct socket_server *ss, struct socket *s, bool enable) {
 	return 0;
 }
 
+// 初始化 struct socket, 并且添加 EPOLLIN 事件
 static struct socket *
 new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque, bool reading) {
 	struct socket * s = &ss->slot[HASH_ID(id)];
 	assert(ATOM_LOAD(&s->type) == SOCKET_TYPE_RESERVE);
-
+	// 添加 EPOLLIN 事件
 	if (sp_add(ss->event_fd, fd, s)) {
 		ATOM_STORE(&s->type, SOCKET_TYPE_INVALID);
 		return NULL;
@@ -580,6 +589,7 @@ new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque,
 	s->reading = true;
 	s->writing = false;
 	s->closing = false;
+	//将 id 的高16位放到 sending 中
 	ATOM_INIT(&s->sending , ID_TAG16(id) << 16 | 0);
 	s->protocol = protocol;
 	s->p.size = MIN_READ_BUFFER;
@@ -1097,6 +1107,9 @@ listen_socket(struct socket_server *ss, struct request_listen * request, struct 
 	if (s == NULL) {
 		goto _failed;
 	}
+	// todo: zf 看到了这里
+	// http://manistein.club/post/server/skynet/skynet%E7%BD%91%E7%BB%9C%E6%9C%BA%E5%88%B6/
+	// Listen流程
 	ATOM_STORE(&s->type , SOCKET_TYPE_PLISTEN);
 	result->opaque = request->opaque;
 	result->id = id;
@@ -1268,6 +1281,7 @@ setopt_socket(struct socket_server *ss, struct request_setopt *request) {
 	setsockopt(s->fd, IPPROTO_TCP, request->what, &v, sizeof(v));
 }
 
+//从管道读取一定字节的数据
 static void
 block_readpipe(int pipefd, void *buffer, int sz) {
 	for (;;) {
@@ -1284,13 +1298,14 @@ block_readpipe(int pipefd, void *buffer, int sz) {
 	}
 }
 
+//worker线程是否有通过管道发送数据
 static int
 has_cmd(struct socket_server *ss) {
 	struct timeval tv = {0,0};
 	int retval;
 
 	FD_SET(ss->recvctrl_fd, &ss->rfds);
-
+	//监听 pipe 的读一端 fd, 不阻塞, 立刻返回
 	retval = select(ss->recvctrl_fd+1, &ss->rfds, NULL, NULL, &tv);
 	if (retval == 1) {
 		return 1;
@@ -1394,7 +1409,7 @@ dec_sending_ref(struct socket_server *ss, int id) {
 	}
 }
 
-// return type
+// return type 根据pipe收到的数据进行处理 数据格式 type + data_len + data
 static int
 ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	int fd = ss->recvctrl_fd;
@@ -1413,7 +1428,7 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 		return pause_socket(ss,(struct request_resumepause *)buffer, result);
 	case 'B':
 		return bind_socket(ss,(struct request_bind *)buffer, result);
-	case 'L':
+	case 'L':	// worker 线程设置了一个用于监听的 fd
 		return listen_socket(ss,(struct request_listen *)buffer, result);
 	case 'K':
 		return close_socket(ss,(struct request_close *)buffer, result);
@@ -1684,6 +1699,7 @@ report_accept(struct socket_server *ss, struct socket *s, struct socket_message 
 	return 1;
 }
 
+//如果是错误类型，则进行错误处理
 static inline void 
 clear_closed_event(struct socket_server *ss, struct socket_message * result, int type) {
 	if (type == SOCKET_CLOSE || type == SOCKET_ERR) {
@@ -1719,6 +1735,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 			}
 		}
 		if (ss->event_index == ss->event_n) {
+			//阻塞等待 io 事件
 			ss->event_n = sp_wait(ss->event_fd, ss->ev, MAX_EVENT);
 			ss->checkctrl = 1;
 			if (more) {
@@ -1818,12 +1835,15 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 	}
 }
 
+//通过 pipe 将数据发送到 socket 线程
 static void
 send_request(struct socket_server *ss, struct request_package *request, char type, int len) {
 	request->header[6] = (uint8_t)type;
 	request->header[7] = (uint8_t)len;
+	// 从 request->header[6] 开始, 应该是为了内存对齐放弃了前面的内存空间
 	const char * req = (const char *)request + offsetof(struct request_package, header[6]);
 	for (;;) {
+		// 写到 pipe, 字节数小于 PIPE_BUF 时, linux 会保住其写入的原子性， linux 中定义是4096字节, 最小不会小于512
 		ssize_t n = write(ss->sendctrl_fd, req, len+2);
 		if (n<0) {
 			if (errno != EINTR) {
@@ -1991,6 +2011,7 @@ socket_server_shutdown(struct socket_server *ss, uintptr_t opaque, int id) {
 
 // return -1 means failed
 // or return AF_INET or AF_INET6
+// 获得一个与 host 和 port 绑定的 fd
 static int
 do_bind(const char *host, int port, int protocol, int *family) {
 	int fd;
@@ -2045,6 +2066,7 @@ do_listen(const char * host, int port, int backlog) {
 	if (listen_fd < 0) {
 		return -1;
 	}
+	// 将 listen_fd 设置为监听状态
 	if (listen(listen_fd, backlog) == -1) {
 		close(listen_fd);
 		return -1;

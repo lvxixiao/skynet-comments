@@ -26,12 +26,19 @@ local function send_request(addr, msg, sz)
 		skynet.tracelog(tracetag, string.format("cluster %s", node))
 		channel:request(cluster.packtrace(tracetag))
 	end
+	-- padding 表示包过大被切分成了多个包, 会利用低优先级通道发, 极端情况下可能没有空闲发。
+	-- request接口会等待请求返回
 	return channel:request(request, current_session, padding)
 end
 
+--comment 发送请求, 等待返回
 function command.req(...)
+	--[[
+		todo: zf 疑问, 返回数据为什么会是在这里, 而不是在 gateserver 的 socket 类型消息
+	]]
 	local ok, msg = pcall(send_request, ...)
 	if ok then
+		-- msg 是个 table 表示消息由多个短小的消息合成。
 		if type(msg) == "table" then
 			skynet.ret(cluster.concat(msg))
 		else
@@ -43,6 +50,7 @@ function command.req(...)
 	end
 end
 
+--comment 发送请求, 抛弃返回数据
 function command.push(addr, msg, sz)
 	local request, new_session, padding = cluster.packpush(addr, session, msg, sz)
 	if padding then	-- is multi push
@@ -70,6 +78,9 @@ function command.changenode(host, port)
 end
 
 skynet.start(function()
+	--[[
+		session 模式
+	]]
 	channel = sc.channel {
 			host = init_host,
 			port = tonumber(init_port),
