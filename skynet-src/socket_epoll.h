@@ -66,12 +66,13 @@ sp_wait(int efd, struct event *e, int max) {
 		e[i].write = (flag & EPOLLOUT) != 0;
 		e[i].read = (flag & EPOLLIN) != 0;
 		e[i].error = (flag & EPOLLERR) != 0;
-		e[i].eof = (flag & EPOLLHUP) != 0;
+		e[i].eof = (flag & EPOLLHUP) != 0;	//通常是对方关闭了连接
 	}
 
 	return n;
 }
 
+//设置为非阻塞模式(read、write、connect等会立即返回)
 static void
 sp_nonblocking(int fd) {
 	int flag = fcntl(fd, F_GETFL, 0);

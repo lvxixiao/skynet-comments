@@ -15,6 +15,9 @@ local connecting = {}
 local function open_channel(t, key)
 	local ct = connecting[key]
 	if ct then
+		--[[
+			防止服务挂起时重入导致重复执行逻辑, 当初始化完成后, 会把挂起的协程唤醒.
+		]]
 		local co = coroutine.running()
 		local channel
 		while ct do

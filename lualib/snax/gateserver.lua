@@ -168,6 +168,7 @@ function gateserver.start(handler)
 		end,
 		dispatch = function (_, _, q, type, ...)
 			queue = q
+			skynet.error("gatesserver socket type ...............", type)
 			if type then
 				MSG[type](...)
 			end

@@ -35,6 +35,7 @@ skynet_socket_updatetime() {
 }
 
 // mainloop thread
+// 将 result 转换位 skynet_message 后push到服务的队列.
 static void
 forward_message(int type, bool padding, struct socket_message * result) {
 	struct skynet_socket_message *sm;

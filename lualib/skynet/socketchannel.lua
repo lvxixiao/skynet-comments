@@ -41,7 +41,7 @@ function socket_channel.channel(desc)
 		__thread = {}, -- coroutine seq or session->coroutine map
 		__result = {}, -- response result { coroutine -> result }
 		__result_data = {},
-		__connecting = {},
+		__connecting = {},	--正在请求连接的协程
 		__sock = false,
 		__closed = false,
 		__authcoroutine = false,
@@ -289,6 +289,7 @@ local function connect_once(self)
 
 	local function _connect_once(self, addr)
 		local fd,err = socket.open(addr.host, addr.port)
+		--没连上备用地址再连一次
 		if not fd then
 			-- try next one
 			addr = _next_addr()
@@ -443,7 +444,7 @@ local function block_connect(self, once)
 	end
 	local err
 
-	if #self.__connecting > 0 then
+	if #self.__connecting > 0 then	--防止在挂起期间重入多次调用
 		-- connecting in other coroutine
 		local co = coroutine.running()
 		table.insert(self.__connecting, co)
