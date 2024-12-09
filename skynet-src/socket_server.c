@@ -1466,7 +1466,7 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 		return listen_socket(ss,(struct request_listen *)buffer, result);
 	case 'K':	//关闭连接
 		return close_socket(ss,(struct request_close *)buffer, result);
-	case 'O':	//发起连接
+	case 'O':	//发起连接, 并且会立刻添加 EPOLLIN 事件
 		return open_socket(ss, (struct request_open *)buffer, result);
 	case 'X':
 		result->opaque = 0;

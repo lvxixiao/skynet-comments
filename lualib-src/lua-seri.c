@@ -43,10 +43,10 @@ struct block {
 };
 
 struct write_block {
-	struct block * head;
-	struct block * current;
-	int len;
-	int ptr;
+	struct block * head;	//链表第一个成员
+	struct block * current;	//最后一个成员
+	int len;	//总字节数
+	int ptr;	//最后一个成员已经写入的字节数
 };
 
 struct read_block {

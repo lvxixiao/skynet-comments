@@ -709,7 +709,7 @@ _filter_args(struct skynet_context * context, int type, int *session, void ** da
 		assert(*session == 0);
 		*session = skynet_context_newsession(context);
 	}
-
+	//即使是不复制, pack 的消耗也是避免不了的
 	if (needcopy && *data) {
 		char * msg = skynet_malloc(*sz+1);
 		memcpy(msg, *data, *sz);

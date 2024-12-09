@@ -19,12 +19,14 @@ local function request_sender(q, node)
 	local confirm = coroutine.running()
 	q.confirm = confirm
 	q.sender = c
+	--执行获得 sender 服务期间的请求
 	for _, task in ipairs(q) do
 		if type(task) == "string" then
 			if c then
 				skynet.send(c, "lua", "push", repack(skynet.unpack(task)))
 			end
 		else
+			--这里并不是唤醒 task 协程, 而是将它放入待唤醒队列, 在 skynet.wait 调用时从待唤醒队列找一个最近的协程恢复执行
 			skynet.wakeup(task)
 			skynet.wait(confirm)
 		end
@@ -42,13 +44,24 @@ end
 
 setmetatable(task_queue, { __index = get_queue } )
 
+--获得 clustersender 服务的地址
 local function get_sender(node)
 	local s = sender[node]
 	if not s then
+		--[[
+			获得 sender 期间的请求会保存在task, 在 sender 地址返回之后, 由协程唤醒执行
+		]]
 		local q = task_queue[node]
 		local task = coroutine.running()
 		table.insert(q, task)
 		skynet.wait(task)
+		--[[
+			有点疑惑, 这里只是加入唤醒队列, 但是接下来的流程应该没有调用唤醒才对?
+			skynet的协程, 在执行时, 都会是这样调用 suspend(co, coroutine_resume(co, ...))
+			在 co_create 函数中, 执行完协程函数后, 会调用 coroutine_yield "SUSPEND",
+			此时 SUSPEND 作为 coroutine_resume 的返回值会传递给 suspend 函数, 
+			接收到这个字符串会让 suspend 挑选一个挂起的协程执行
+		]]
 		skynet.wakeup(q.confirm)
 		return q.sender
 	end

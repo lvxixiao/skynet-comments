@@ -12,6 +12,7 @@ local nodename = cluster.nodename()
 
 local connecting = {}
 
+-- 创建 clustersender 服务并连接到节点, 返回服务地址
 local function open_channel(t, key)
 	local ct = connecting[key]
 	if ct then
@@ -145,6 +146,7 @@ function command.reload(source, config)
 	skynet.ret(skynet.pack(nil))
 end
 
+--监听端口
 function command.listen(source, addr, port, maxclient)
 	local gate = skynet.newservice("gate")
 	if port == nil then
@@ -160,6 +162,7 @@ function command.listen(source, addr, port, maxclient)
 	end
 end
 
+--根据 node 获得 clustersender 服务的地址, 如果不存在则创建并连接该 node
 function command.sender(source, node)
 	skynet.ret(skynet.pack(node_channel[node]))
 end

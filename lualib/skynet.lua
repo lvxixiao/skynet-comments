@@ -846,6 +846,7 @@ function skynet.retpack(...)
 	return skynet.ret(skynet.pack(...))
 end
 
+--放入待唤醒队列, 并不是立刻唤醒
 function skynet.wakeup(token)
 	if sleep_session[token] then
 		tinsert(wakeup_queue, token)

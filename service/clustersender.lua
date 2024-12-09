@@ -34,7 +34,8 @@ end
 --comment 发送请求, 等待返回
 function command.req(...)
 	--[[
-		todo: zf 疑问, 返回数据为什么会是在这里, 而不是在 gateserver 的 socket 类型消息
+		疑问, 返回数据为什么会是在这里, 而不是在 gateserver 的 socket 类型消息
+		答: 这个连接是由本服务发起的, 不需要调用 socket.start 来添加 EPOLLIN 事件, socket消息会发送给发起连接的服务
 	]]
 	local ok, msg = pcall(send_request, ...)
 	if ok then
