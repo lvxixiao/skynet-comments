@@ -23,13 +23,13 @@
 #define MAX_EVENT 64
 #define MIN_READ_BUFFER 64
 #define SOCKET_TYPE_INVALID 0
-#define SOCKET_TYPE_RESERVE 1
+#define SOCKET_TYPE_RESERVE 1	//保留, 意味着很快这个 struct socket 很快就要被使用
 #define SOCKET_TYPE_PLISTEN 2	//已经初始化好 listen_fd, 但是还没添加 EPOLLIN 事件
-#define SOCKET_TYPE_LISTEN 3
-#define SOCKET_TYPE_CONNECTING 4
-#define SOCKET_TYPE_CONNECTED 5
+#define SOCKET_TYPE_LISTEN 3	// 监听状态
+#define SOCKET_TYPE_CONNECTING 4	//正在连接, 非阻塞模式下会有这个状态, 此时已经发起连接但是连接未建立
+#define SOCKET_TYPE_CONNECTED 5		//已建立连接
 #define SOCKET_TYPE_HALFCLOSE_READ 6	// 半关闭状态、关闭读操作
-#define SOCKET_TYPE_HALFCLOSE_WRITE 7
+#define SOCKET_TYPE_HALFCLOSE_WRITE 7	// 半关闭状态、关闭写操作
 #define SOCKET_TYPE_PACCEPT 8	//已经 accept, 但是还没有添加 EPOLLIN 事件
 #define SOCKET_TYPE_BIND 9
 
@@ -687,6 +687,7 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		freeaddrinfo( ai_list );
 		return SOCKET_OPEN;
 	} else {
+		// 非阻塞模式下可能正在连接, 此时添加 EPOLLOUT 事件, 连接创建成功时由 epoll 那边事件通知后再继续处理
 		if (enable_write(ss, ns, true)) {
 			result->data = "enable write failed";
 			goto _failed;
@@ -1462,7 +1463,7 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 		return pause_socket(ss,(struct request_resumepause *)buffer, result);
 	case 'B':
 		return bind_socket(ss,(struct request_bind *)buffer, result);
-	case 'L':	// worker 线程设置了一个用于监听的 fd
+	case 'L':	// worker 线程设置了一个用于监听的 fd, 但是不会立刻添加 EPOLLIN 事件
 		return listen_socket(ss,(struct request_listen *)buffer, result);
 	case 'K':	//关闭连接
 		return close_socket(ss,(struct request_close *)buffer, result);
@@ -1946,7 +1947,7 @@ can_direct_write(struct socket *s, int id) {
 // return -1 when error, 0 when success
 int 
 socket_server_send(struct socket_server *ss, struct socket_sendbuffer *buf) {
-	// 这个函数可能从 worker 线程调用
+	// 这个函数从 worker 线程调用
 	int id = buf->id;
 	struct socket * s = &ss->slot[HASH_ID(id)];
 	if (socket_invalid(s, id) || s->closing) {

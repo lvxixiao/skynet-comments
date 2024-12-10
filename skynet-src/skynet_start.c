@@ -93,6 +93,7 @@ free_monitor(struct monitor *m) {
 
 static void *
 thread_monitor(void *p) {
+	// todo: zf 守护线程的工作是什么?
 	struct monitor * m = p;
 	int i;
 	int n = m->count;
