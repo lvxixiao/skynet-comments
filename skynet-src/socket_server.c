@@ -325,6 +325,7 @@ send_object_init_from_sendbuffer(struct socket_server *ss, struct send_object *s
 	case SOCKET_BUFFER_RAWPOINTER:
 		so->buffer = buf->buffer;
 		so->sz = buf->sz;
+		//SOCKET_BUFFER_RAWPOINTER 为 lua 管理内存的类型(lstring, userdata), 因此不需要额外释放
 		so->free_func = dummy_free;
 		break;
 	default:
@@ -475,6 +476,7 @@ free_buffer(struct socket_server *ss, struct socket_sendbuffer *buf) {
 	}
 }
 
+//当 send buffer 是 lua 管理的内存对象时, 需要 copy 一份, 避免没有引用被回收
 static const void *
 clone_buffer(struct socket_sendbuffer *buf, size_t *sz) {
 	switch (buf->type) {
