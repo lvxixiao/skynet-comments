@@ -1116,15 +1116,19 @@ LUA_API void lua_clonefunction (lua_State *L, const void * fp) {
   LClosure *f = cast(LClosure *, fp);
   api_check(L, isshared(f->p), "Not a shared proto");
   lua_lock(L);
+  //创建闭包结构
   cl = luaF_newLclosure(L,f->nupvalues);
   setclLvalue2s(L,L->top.p,cl);
   api_incr_top(L);
+  //将新闭包的 proto 指向共享的 proto
   cl->p = f->p;
+  // upval 初始化为 nil
   luaF_initupvals(L, cl);
+  //设置 upval 第一个成员设置为 _G
   set_env(L,cl);
   lua_unlock(L);
 }
-
+//将 栈上指定位置的 LClosure->proto 设置为共享
 LUA_API void lua_sharefunction (lua_State *L, int index) {
   LClosure *f;
   if (!lua_isfunction(L,index) || lua_iscfunction(L,index))

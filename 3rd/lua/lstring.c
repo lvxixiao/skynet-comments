@@ -56,6 +56,7 @@ int luaS_eqshrstr (TString *a, TString *b) {
   return r;
 }
 
+//将字符串标记为共享字符串, 在gc阶段共享字符串会被跳过
 void luaS_share (TString *ts) {
   if (ts == NULL || isshared(ts))
     return;

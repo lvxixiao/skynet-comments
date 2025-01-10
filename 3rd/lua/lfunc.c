@@ -33,6 +33,7 @@ CClosure *luaF_newCclosure (lua_State *L, int nupvals) {
 }
 
 
+//创建 LClosure 闭包
 LClosure *luaF_newLclosure (lua_State *L, int nupvals) {
   GCObject *o = luaC_newobj(L, LUA_VLCL, sizeLclosure(nupvals));
   LClosure *c = gco2lcl(o);
@@ -45,6 +46,7 @@ LClosure *luaF_newLclosure (lua_State *L, int nupvals) {
 
 /*
 ** fill a closure with new closed upvalues
+*  初始化为 upval 为 nil
 */
 void luaF_initupvals (lua_State *L, LClosure *cl) {
   int i;
@@ -293,6 +295,12 @@ const char *luaF_getlocalname (const Proto *f, int local_number, int pc) {
   return NULL;  /* not found */
 }
 
+/**
+ * 共享 proto
+ * 1.将proto标记为共享, 防止被 gc 回收
+ * 2.将常量表中的字符串以及upvalue 和 local变量名字的字符串标记为共享, 防止被 gc 回收
+ * 3.处理嵌套的 proto
+*/
 void luaF_shareproto (Proto *f) {
   int i;
   if (f == NULL || isshared(f))

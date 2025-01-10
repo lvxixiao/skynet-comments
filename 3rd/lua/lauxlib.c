@@ -1244,7 +1244,7 @@ static int cache_mode(lua_State *L) {
 LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
                                              const char *mode) {
   int level = cache_level(L);
-  const void * proto;
+  const void * proto; //名为 proto, 实际上是 Closure 结构体
   lua_State * eL;
   int err;
   const void * oldv;
@@ -1275,6 +1275,7 @@ LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
   lua_sharefunction(eL, -1);
   proto = lua_topointer(eL, -1);
   oldv = save_proto(filename, proto);
+  //应该是多线程同时加载才会出现 oldv 的情况
   if (oldv) {
     lua_close(eL);
     lua_clonefunction(L, oldv);

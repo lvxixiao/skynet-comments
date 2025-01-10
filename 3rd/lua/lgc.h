@@ -119,6 +119,7 @@
 #define isold(o)	(getage(o) > G_SURVIVAL)
 
 #define isshared(x)     (getage(x) == G_SHARED)
+//标记为共享对象
 #define makeshared(x)   setage(x, G_SHARED)
 #define ispurewhite(x)  (iswhite(x) && !isshared(x))
 
